@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 집중도 거울</title>
+
+<style>
+body{
+    margin:0;
+    background:radial-gradient(circle,#1e2022 0%,#0f1011 100%);
+    color:white;
+    font-family:Arial,sans-serif;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    min-height:100vh;
+}
+
+.container{
+    width:520px;
+    background:rgba(255,255,255,0.04);
+    border-radius:24px;
+    padding:24px;
+    text-align:center;
+    backdrop-filter:blur(10px);
+}
+
+#webcam-container{
+    width:400px;
+    height:300px;
+    margin:auto;
+    border-radius:16px;
+    overflow:hidden;
+    background:#111;
+}
+
+canvas{
+    width:100%!important;
+    height:100%!important;
+}
+
+.status{
+    margin-top:20px;
+    padding:20px;
+    border-radius:16px;
+    background:rgba(0,0,0,.3);
+}
+
+#emoji{
+    font-size:72px;
+}
+
+#title{
+    font-size:24px;
+    margin-top:10px;
+}
+
+#prob{
+    color:#aaa;
+    margin-top:10px;
+}
+
+.sleep{
+    animation:blink .8s infinite;
+}
+
+.danger{
+    animation:danger .3s infinite;
+}
+
+@keyframes blink{
+    50%{
+        opacity:.5;
+    }
+}
+
+@keyframes danger{
+    50%{
+        filter:brightness(2);
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h2>AI 집중도 거울</h2>
+
+<div id="webcam-container">
+카메라 로딩중...
+</div>
+
+<div class="status">
+
+<div id="emoji">😐</div>
+
+<div id="title">
+대기중...
+</div>
+
+<div id="prob">
+0%
+</div>
+
+</div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+
+<script>
+
+const URL =
+"https://teachablemachine.withgoogle.com/models/JHO3AOplM/";
+
+let model;
+let webcam;
+
+let sleepFrames = 0;
+
+const alarm = new Audio(
+"https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg"
+);
+
+async function start(){
+
+model = await tmImage.load(
+URL+"model.json",
+URL+"metadata.json"
+);
+
+webcam = new tmImage.Webcam(
+640,
+480,
+true
+);
+
+await webcam.setup();
+await webcam.play();
+
+document
+.getElementById("webcam-container")
+.innerHTML="";
+
+document
+.getElementById("webcam-container")
+.appendChild(webcam.canvas);
+
+requestAnimationFrame(loop);
+}
+async function loop(){
+
+    webcam.update();
+
+    // 다음 화면을 먼저 예약
+    requestAnimationFrame(loop);
+
+    const prediction =
+    await model.predict(webcam.canvas);
+
+    let sleep = 0;
+    let wake = 0;
+
+    for(const p of prediction){
+
+        const name =
+        p.className
+        .toLowerCase()
+        .replace(/[\s_]/g,"");
+        if(name==="sleep"){
+            sleep=p.probability;
+        }
+
+        if(name==="wakeup"){
+            wake=p.probability;
+        }
+    }
+
+    const emoji =
+    document.getElementById("emoji");
+
+    const title =
+    document.getElementById("title");
+
+    const prob =
+    document.getElementById("prob");
+
+    const status =
+    document.querySelector(".status");
+
+    status.classList.remove(
+        "sleep",
+        "danger"
+    );
+
+    if(wake>=0.9){
+
+        sleepFrames=0;
+
+        emoji.innerText="😄";
+        title.innerText="집중 중";
+
+        prob.innerText=
+        "Wake "+(wake*100).toFixed(0)+"%";
+
+    }
+
+    else if(wake>=0.7){
+
+        sleepFrames=0;
+
+        emoji.innerText="🙂";
+        title.innerText="정상 상태";
+
+        prob.innerText=
+        "Wake "+(wake*100).toFixed(0)+"%";
+
+    }
+
+    else if(sleep>=0.5 && sleep<0.7){
+
+        sleepFrames++;
+
+        emoji.innerText="😪";
+        title.innerText="졸림 감지";
+
+        prob.innerText=
+        "Sleep "+(sleep*100).toFixed(0)+"%";
+
+        status.classList.add("sleep");
+    }
+
+    else if(sleep>=0.7){
+
+        sleepFrames++;
+
+        emoji.innerText="💀";
+        title.innerText="졸음 상태";
+
+        prob.innerText=
+        "Sleep "+(sleep*100).toFixed(0)+"%";
+
+        status.classList.add("sleep");
+
+        if(sleepFrames>90){
+
+            emoji.innerText="🚨";
+
+            title.innerText=
+            "잠들었습니다!";
+
+            status.classList.add(
+                "danger"
+            );
+
+            alarm.loop=true;
+
+            alarm.play().catch(()=>{});
+        }
+    }
+
+    else{
+
+        sleepFrames=0;
+
+        emoji.innerText="🔍";
+        title.innerText="인식중...";
+        prob.innerText="";
+
+        alarm.pause();
+        alarm.currentTime=0;
+    }
+}
+</script>
+
+<script>
+start();
+</script>
+
+</body>
+</html>
